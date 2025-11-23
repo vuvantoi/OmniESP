@@ -24,6 +24,7 @@ public:
     virtual ~Device() {}
 
     String getId() { return _id; }
+    String getName() { return _name; }
     String getDriver() { return _driver; } // Ex: "DHT22", "RELAY", "MQ2"
     int getPin() { return _pin; }
     
