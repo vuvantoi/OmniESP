@@ -7,21 +7,39 @@
 #include <Wire.h>
 #include "OmniDrivers.h"
 
-// --- GLOBALS ---
+// --- GLOBALES ---
 std::vector<Device*> devices;
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws");
 SemaphoreHandle_t mutex;
 
-// --- UTILS ---
+// Structure pour les règles d'automatisation
+struct Rule { String srcId; String param; String op; float threshold; String tgtId; float actionVal; };
+std::vector<Rule> rules;
+
+// --- UTILS & SÉCURITÉ ---
 bool isI2CDriver(String type) {
     return (type == "INA219" || type == "BME280" || type == "BH1750" || type == "LCD_I2C" || type == "OLED");
 }
 
+bool isOutputDevice(String type) {
+    return (type == "RELAY" || type == "VALVE" || type == "LOCK" || type == "SERVO" || type == "NEOPIXEL");
+}
+
 bool isPinValid(int pin, String type) {
-    if(isI2CDriver(type)) return (pin >= 1 && pin <= 127);
+    // 1. Validation I2C (Adresses)
+    if(isI2CDriver(type)) return (pin >= 0x01 && pin <= 0x77);
+    
+    // 2. Validation GPIO Hardware
     if (pin < 0 || pin > 39) return false;
+    // Pins interdits (Flash SPI, UART0)
     if (pin == 1 || pin == 3 || (pin >= 6 && pin <= 11)) return false; 
+    
+    // 3. Protection INPUT ONLY (34, 35, 36, 39 ne peuvent pas être des sorties)
+    if (isOutputDevice(type)) {
+        if (pin == 34 || pin == 35 || pin == 36 || pin == 39) return false;
+    }
+    
     return true;
 }
 
@@ -56,7 +74,7 @@ String scanI2C() {
     return output;
 }
 
-// --- CONFIG MANAGEMENT ---
+// --- CONFIGURATION (Load/Save) ---
 void saveConfig() {
     File f = LittleFS.open("/config.json", "w");
     if(!f) return;
@@ -72,6 +90,15 @@ void saveConfig() {
     }
     xSemaphoreGive(mutex);
 
+    // Sauvegarde des règles (si implémenté côté HTML futur)
+    JsonArray ruleArr = doc->createNestedArray("rules");
+    for(auto r : rules) {
+        JsonObject obj = ruleArr.createNestedObject();
+        obj["src"] = r.srcId; obj["prm"] = r.param; 
+        obj["op"] = r.op; obj["val"] = r.threshold;
+        obj["tgt"] = r.tgtId; obj["act"] = r.actionVal;
+    }
+
     serializeJson(*doc, f);
     delete doc;
     f.close();
@@ -82,8 +109,10 @@ void loadConfig() {
     File f = LittleFS.open("/config.json", "r");
     
     DynamicJsonDocument* doc = new DynamicJsonDocument(8192);
-    deserializeJson(*doc, f);
+    DeserializationError error = deserializeJson(*doc, f);
     f.close();
+
+    if(error) { delete doc; return; }
 
     JsonArray arr = (*doc)["devices"];
     for(JsonObject obj : arr) {
@@ -93,24 +122,76 @@ void loadConfig() {
             if(d) { d->begin(); devices.push_back(d); }
         }
     }
+    
+    rules.clear();
+    JsonArray rArr = (*doc)["rules"];
+    for(JsonObject obj : rArr) {
+        rules.push_back({obj["src"], obj["prm"], obj["op"], obj["val"], obj["tgt"], obj["act"]});
+    }
     delete doc;
+}
+
+// --- MOTEUR D'AUTOMATISATION ---
+void checkRules() {
+    static unsigned long lastCheck = 0;
+    // Vérification toutes les 500ms pour ne pas saturer le CPU
+    if(millis() - lastCheck < 500) return;
+    lastCheck = millis();
+
+    xSemaphoreTake(mutex, portMAX_DELAY);
+    
+    // On utilise un petit document statique pour lire les valeurs sans allocation lourde
+    StaticJsonDocument<512> doc;
+    
+    for(auto& r : rules) {
+        Device* src = nullptr; Device* tgt = nullptr;
+        // Recherche des devices par ID
+        for(auto d : devices) { 
+            if(d->getId() == r.srcId) src = d; 
+            if(d->getId() == r.tgtId) tgt = d; 
+        }
+
+        if(src && tgt) {
+            doc.clear(); 
+            JsonObject obj = doc.to<JsonObject>(); 
+            src->read(obj); // Lecture non-bloquante (cache)
+            
+            if(obj.containsKey(r.param)) {
+                float val = obj[r.param];
+                bool trig = (r.op == ">" && val > r.threshold) || (r.op == "<" && val < r.threshold);
+                
+                if(trig) {
+                    // Action simple
+                    if(tgt->getType() == DISPLAY_DEV) tgt->writeText(src->getName() + ": " + String(val));
+                    else tgt->write("set", r.actionVal);
+                }
+            }
+        }
+    }
+    xSemaphoreGive(mutex);
 }
 
 // --- SETUP ---
 void setup() {
     Serial.begin(115200);
     mutex = xSemaphoreCreateMutex();
+    
+    // Init I2C
     Wire.begin();
     
-    if(!LittleFS.begin(true)) Serial.println("LITTLEFS Error");
+    if(!LittleFS.begin(true)) Serial.println("LITTLEFS Mount Failed");
 
     loadConfig();
 
     WiFiManager wm;
-    wm.setClass("invert");
-    if(!wm.autoConnect("OmniESP-V2", "admin1234")) ESP.restart();
+    wm.setClass("invert"); // Dark theme
+    // Timeout pour éviter de bloquer le boot si pas de wifi
+    wm.setConfigPortalTimeout(180); 
+    if(!wm.autoConnect("OmniESP-V2", "admin1234")) {
+        Serial.println("WiFi Fail - Continue Offline");
+    }
 
-    // --- API STATUS (STREAMING FOR STABILITY) ---
+    // --- API STATUS ---
     server.on("/api/status", HTTP_GET, [](AsyncWebServerRequest *req){
         AsyncResponseStream *res = req->beginResponseStream("application/json");
         res->print("{\"devices\":[");
@@ -136,7 +217,7 @@ void setup() {
         req->send(res);
     });
 
-    // --- API SCAN ---
+    // --- API SCAN I2C ---
     server.on("/api/scan", HTTP_GET, [](AsyncWebServerRequest *req){
         xSemaphoreTake(mutex, portMAX_DELAY);
         String res = scanI2C();
@@ -180,6 +261,14 @@ void setup() {
                         if(d) { d->begin(); devices.push_back(d); }
                      }
                 }
+                // (Optionnel) Recharger les règles si envoyées dans le JSON
+                if((*doc).containsKey("rules")) {
+                    rules.clear();
+                    JsonArray rArr = (*doc)["rules"];
+                    for(JsonObject obj : rArr) {
+                        rules.push_back({obj["src"], obj["prm"], obj["op"], obj["val"], obj["tgt"], obj["act"]});
+                    }
+                }
                 xSemaphoreGive(mutex);
                 saveConfig();
                 req->send(200, "text/plain", "Saved");
@@ -195,11 +284,13 @@ void setup() {
     server.begin();
 }
 
-// --- LOOP ---
+// --- LOOP PRINCIPAL ---
 void loop() {
+    // 1. Gestion des règles (Thermostat, etc)
+    checkRules();
+
+    // 2. Gestion WebSocket (Push vers l'interface)
     static unsigned long lastWsUpdate = 0;
-    
-    // WebSocket update every 2 seconds to avoid flooding
     if(millis() - lastWsUpdate > 2000) {
         lastWsUpdate = millis();
         
